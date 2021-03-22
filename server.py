@@ -23,6 +23,7 @@ alltile = [character, bamboo, dot, wind, dragon]
 
 
 def tomahjong(id):
+    #将麻将id或id列表转换为emoji
     if(isinstance(id, int)):
         return alltile[int(id/10)][id % 10]
     else:
@@ -30,6 +31,7 @@ def tomahjong(id):
 
 
 def printjson(obj):
+    #将对象json序列化输出
     print(obj)
     # print(json.dumps(obj))
 
@@ -219,13 +221,14 @@ class Board:
         self.wall = wall
         self.players = players
 
+
+
     def start(self):
         printjson({"messages": "牌局开始..."})
 
         for i in range(len(self.players)):
             j = int(random.random() * (i + 1))
             self.players[i], self.players[j] = self.players[j], self.players[i]
-
         ordermessege = {"messages": "顺序："+self.players[0].name+" " +
                         self.players[1].name+" "+self.players[2].name+" "+self.players[3].name}
         printjson(ordermessege)
@@ -241,24 +244,24 @@ class Board:
         # 主循环
         index = 0
         ongoingTile = 0
-        # self.wall.draw()
-        # self.players[index].get(ongoingTile)
-        # ongoingTile = self.players[index].discard()
-        # index=self.next(index)
-
         while(True):
             #self.getboard(self.players[index].id)
             if(self.players[index].id==4):self.getboard(4)
             currentplayer=self.players[index]
 
             #听牌点炮
+            winner=[]
             for i in currentplayer.readyhand():
                 if(ongoingTile==i):
                     if(currentplayer.confirm("win")):
-                        print(tomahjong(ongoingTile))
-                        self.end(self.players[thenext].name+"点炮")
-                        printjson(" ".join(tomahjong(self.players[thenext].handTile)))
-                        return
+                        winner.append(currentplayer)
+            
+            if(winner!=[]):
+                print(tomahjong(ongoingTile))
+                for i in winner:
+                    self.end(i.name+"点炮")
+                    printjson(" ".join(tomahjong(self.players[thenext].handTile)))
+                    return
 
             
             thenext=index
@@ -282,6 +285,8 @@ class Board:
             
             #抽牌
             ongoingTile = self.wall.draw()
+            # log
+            print(currentplayer.name+" 摸:"+tomahjong(ongoingTile))
             #自摸处理
             for i in currentplayer.readyhand():
                 if(ongoingTile==i):
@@ -294,14 +299,16 @@ class Board:
 
             #无事发生
             currentplayer.get(ongoingTile)
-            # log
-            print(currentplayer.name+" 摸:"+tomahjong(ongoingTile))
             ongoingTile = currentplayer.discard()
 
 
             index = self.next(index)
             if(self.wall.left() == 0):
-                self.end("流局")
+                winner=[]
+                for i in self.players:
+                    if(i.readyhand()!=[]):winner.append(i.name)
+                if(winner==[]):self.end("流局：无人胜出")
+                else:self.end("流局："+" ".join(winner)+"听牌胜出")
                 return
 
     def end(self,str):
