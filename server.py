@@ -1,6 +1,5 @@
 import random
 import json
-
 # 🀀🀁🀂🀃🀄🀅🀆🀇🀈🀉🀊🀋🀌🀍🀎🀏🀐🀑🀒🀓🀔🀕🀖🀗🀘🀙🀚🀛🀜🀝🀞🀟🀠🀡🀢🀣🀤🀥🀦🀧🀨🀩🀪 🀫
 alltileid = [1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26, 27, 28, 29,
              1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 24, 25, 26, 27, 28, 29,
@@ -34,6 +33,7 @@ def printjson(obj):
     #将对象json序列化输出
     print(obj)
     # print(json.dumps(obj))
+
 
 def win(tiles):
 #接受14张已排序的牌 返回是否胡牌
@@ -93,6 +93,7 @@ class Wall:
 
 
 class Player:
+    context=0
     name = ""
     id = 0
     point = 0
@@ -100,7 +101,8 @@ class Player:
     showTile = []
     riverTile = []
 
-    def __init__(self, name, id, point):
+    def __init__(self, context,name, id, point):
+        self.context=context
         self.name = name
         self.id = id
         self.point = point
@@ -197,6 +199,7 @@ class Player:
                 wt.remove(i)
         return wt
 
+
 class Ai(Player):
     def confirm(self,messages):
         if(random.random()>0.5):return True
@@ -216,11 +219,14 @@ class Board:
     wall = Wall()
     players = []
     ongoingTile = 0
-
-    def __init__(self, players=[Ai("恩雅", 1, 1), Ai("弥尔米娜", 2, 2), Ai("阿莫恩", 3, 3), Player("娜瑞提尔", 4, 4)], wall=Wall()):
+    #Player("娜瑞提尔", 4, 4)
+    def __init__(self, players=[Ai(0,"恩雅", 1, 1), Ai(0,"弥尔米娜", 2, 2), Ai(0,"阿莫恩", 3, 3)], wall=Wall()):
         self.wall = wall
         self.players = players
 
+    def add(self,player):
+        if(confirm(player.context,"sure?")):
+            self.players.append(player)
 
 
     def start(self):
@@ -344,4 +350,48 @@ class Board:
                 #printjson({"name": i.name, "riverTile": i.riverTile})
 
 board = Board()
-board.start()
+#board.start()
+
+
+from telegram.ext import Updater
+import telegram
+import logging
+from uuid import uuid4
+import json
+from telegram.ext import CommandHandler
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',level=logging.INFO)
+#persistentdata = PicklePersistence(filename='userdata')
+#updater = Updater(token='1723327297:AAGDyTGu9M8iQE_VGxX9J-PpVmP33xgchZI',persistence=persistentdata,use_context=True,request_kwargs={'proxy_url': 'http://127.0.0.1:7890/'})
+updater = Updater(token='1723327297:AAGDyTGu9M8iQE_VGxX9J-PpVmP33xgchZI',use_context=True,request_kwargs={'proxy_url': 'http://127.0.0.1:7890/'})
+dispatcher = updater.dispatcher
+
+def start(update, context):
+    context.user_data["id"] = update.effective_chat.id
+    context.bot.send_message(chat_id=update.effective_chat.id,
+                             text="你好!\n你的chatid是："+str(update.effective_chat.id))
+
+def play(update,context):
+    player=Player(context,getname(update,context),update.effective_chat.id,0)
+    board.add(player)
+
+def confirm(context, messages):
+    id=context.user_data.get("id")
+    context.bot.send_message(id,text=str(id)+" :\n"+messages)
+    return "多轮"
+
+def setname(update, context):
+    value = update.message.text.partition(' ')[2]
+    context.user_data["name"] = value
+    update.message.reply_text("昵称修改为："+value)
+
+def getname(update, context):
+    value = context.user_data.get("name", 'Not found')
+    update.message.reply_text(value)
+
+
+dispatcher.add_handler(CommandHandler('setname', setname))
+dispatcher.add_handler(CommandHandler('getname', getname))
+dispatcher.add_handler(CommandHandler('play', play))
+start_handler = CommandHandler('start', start)
+dispatcher.add_handler(start_handler)
+updater.start_polling()
