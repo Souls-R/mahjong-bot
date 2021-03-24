@@ -111,11 +111,13 @@ class Player:
         self.riverTile = []
 
     def confirm(self,messages):
-        printjson({"message":messages})
+        #printjson({"message":messages})
         #接入bot
+        #confirmmessage(self.context,messages)
         response=input()
-        if(response=="y"):return True
-        elif(response=="n"):return False
+        response=self.context.user_data["confirm"]
+        if(response=="True"):return True
+        elif(response=="False"):return False
         else:return int(response)
 
 
@@ -216,17 +218,19 @@ class Ai(Player):
 
 
 class Board:
+    id=0
     wall = Wall()
     players = []
     ongoingTile = 0
     #Player("娜瑞提尔", 4, 4)
-    def __init__(self, players=[Ai(0,"恩雅", 1, 1), Ai(0,"弥尔米娜", 2, 2), Ai(0,"阿莫恩", 3, 3)], wall=Wall()):
+    def __init__(self, id=0,players=[Ai(0,"恩雅", 1, 1), Ai(0,"弥尔米娜", 2, 2), Ai(0,"阿莫恩", 3, 3),Player(1,"娜瑞提尔", 4, 4)], wall=Wall()):
         self.wall = wall
         self.players = players
 
     def add(self,player):
-        if(confirm(player.context,"sure?")):
+        if(player.confirm("sure?")):
             self.players.append(player)
+            message(player.context,"已加入Board:"+str(id))
 
 
     def start(self):
@@ -350,34 +354,37 @@ class Board:
                 #printjson({"name": i.name, "riverTile": i.riverTile})
 
 board = Board()
-#board.start()
+board.start()
 
 
 from telegram.ext import Updater
-import telegram
-import logging
-from uuid import uuid4
+import time
 import json
-from telegram.ext import CommandHandler
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',level=logging.INFO)
-#persistentdata = PicklePersistence(filename='userdata')
-#updater = Updater(token='1723327297:AAGDyTGu9M8iQE_VGxX9J-PpVmP33xgchZI',persistence=persistentdata,use_context=True,request_kwargs={'proxy_url': 'http://127.0.0.1:7890/'})
-updater = Updater(token='1723327297:AAGDyTGu9M8iQE_VGxX9J-PpVmP33xgchZI',use_context=True,request_kwargs={'proxy_url': 'http://127.0.0.1:7890/'})
+from telegram.ext import CommandHandler,CallbackQueryHandler
+from telegram import KeyboardButton,InlineKeyboardButton,InlineKeyboardMarkup
+updater = Updater(token='',use_context=True,request_kwargs={'proxy_url': 'http://127.0.0.1:7890/'})
 dispatcher = updater.dispatcher
-
 def start(update, context):
-    context.user_data["id"] = update.effective_chat.id
     context.bot.send_message(chat_id=update.effective_chat.id,
                              text="你好!\n你的chatid是："+str(update.effective_chat.id))
 
 def play(update,context):
+    context.user_data["id"] = update.effective_chat.id
     player=Player(context,getname(update,context),update.effective_chat.id,0)
     board.add(player)
 
-def confirm(context, messages):
+def message(context, messages):
     id=context.user_data.get("id")
     context.bot.send_message(id,text=str(id)+" :\n"+messages)
-    return "多轮"
+
+
+def confirmmessage(context, messages):
+    id=context.user_data.get("id")
+    context.user_data["confirm"]=0
+    keyboard= [[InlineKeyboardButton("Yes", callback_data='True'),
+                InlineKeyboardButton("No", callback_data='False')]]
+    reply_markup=InlineKeyboardMarkup(keyboard)
+    context.bot.send_message(id,text=str(id)+" :\n"+messages,reply_markup=reply_markup)
 
 def setname(update, context):
     value = update.message.text.partition(' ')[2]
@@ -388,10 +395,15 @@ def getname(update, context):
     value = context.user_data.get("name", 'Not found')
     update.message.reply_text(value)
 
+def button(update, context):
+    query = update.callback_query
+    query.edit_message_text(text="你选择: {}".format(query.data))
+    context.user_data["confirm"] = query.data
+    print("got it")
 
 dispatcher.add_handler(CommandHandler('setname', setname))
 dispatcher.add_handler(CommandHandler('getname', getname))
 dispatcher.add_handler(CommandHandler('play', play))
-start_handler = CommandHandler('start', start)
-dispatcher.add_handler(start_handler)
+dispatcher.add_handler(CommandHandler('start', start))
+dispatcher.add_handler(CallbackQueryHandler(button))
 updater.start_polling()
