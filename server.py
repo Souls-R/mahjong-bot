@@ -44,28 +44,34 @@ def win(tiles):
     if(len(tiles) == 14):
         for i in range(len(tiles)-1):
             if(tiles[i] == tiles[i+1]):
-                pair = tiles[i]
                 temp = list(tiles)
                 del temp[i:i+2]
                 if(win(temp)):
                     return True
         return False
 
+    if(len(tiles) == 2):
+        if(tiles[0] == tiles[1]):
+            return True
+    
     if(len(tiles) <= 12):
         if(len(tiles) == 0):
             return True
-        for i in range(len(tiles)-2):
-            if(tiles[i] == tiles[i+1] and tiles[i+1] == tiles[i+2]):
-                del tiles[i:i+3]
+        for i in tiles:
+            if(tiles.count(i)>=3):
+                tiles.remove(i)
+                tiles.remove(i)
+                tiles.remove(i)
                 return win(tiles)
             # 三元与风牌不组成顺子
-            if(tiles[i] > 30):
+            if(i > 30):
                 continue
-
-            if(tiles[i] == tiles[i+1]-1 and tiles[i+1] == tiles[i+2]-1):
-                del tiles[i:i+3]
+            if(i+1 in tiles and i+2 in tiles):
+                tiles.remove(i)
+                tiles.remove(i+1)
+                tiles.remove(i+2)
                 return win(tiles)
-        return False
+    return False
 
 
 class Wall:
@@ -128,6 +134,7 @@ class Player:
     def discard(self):
         sendoption(self.context, "请弃牌：", self.handTile)
         while(self.context.user_data["option"] == -1):time.sleep(0.5)
+        #print(str(self.context.user_data["option"]))
         id = int(self.context.user_data["option"])
         self.context.user_data["option"] = 0
         self.riverTile.append(id)
@@ -282,13 +289,13 @@ class Board:
             for pl in self.players:
                 for i in pl.readyhand():
                     if(ongoingTile == i):
-                        if(pl.confirm("win")):
+                        if(pl.confirm("胡！")):
                             winner.append(pl)
 
             if(winner != []):
                 for i in winner:
-                    self.end(tomahjong(ongoingTile)+str(i.name)+"点炮")
-                    self.broadcast(tomahjong(self.players[thenext].handTile))
+                    self.end(tomahjong(ongoingTile)+str(i.name)+"胡了！")
+                    self.broadcast(tomahjong(i.handTile))
                     return
 
             thenext = index
@@ -296,6 +303,7 @@ class Board:
             # 碰的处理
             for i in range(3):
                 if(self.players[thenext].pong(ongoingTile)):
+                    self.players[self.prev(index)].riverTile.remove(ongoingTile)
                     self.broadcast(
                         str(self.players[thenext].name)+"碰"+tomahjong(ongoingTile))
                     ongoingTile = self.players[thenext].discard()
@@ -310,6 +318,7 @@ class Board:
 
             # 吃的处理
             if(currentplayer.chow(ongoingTile)):
+                self.players[self.prev(index)].riverTile.remove(ongoingTile)
                 self.broadcast(str(currentplayer.name) +
                                "吃"+tomahjong(ongoingTile))
                 ongoingTile = currentplayer.discard()
@@ -351,6 +360,9 @@ class Board:
 
     def end(self, str):
         self.broadcast("游戏结束："+str)
+        for i in self.players:
+            if(i.context!=0):
+                i.context.user_data["state"]="wait"
         return
 
     def next(self, index):
@@ -361,6 +373,12 @@ class Board:
                 return index+1
         else:
             return list(map(self.next, index))
+
+    def prev(self, index):
+        if(index == 0):
+            return 3
+        else:
+            return index-1
 
     def deal(self):
         for i in self.players:
@@ -417,6 +435,9 @@ def play(update, context):
 
 
 def addai(update, context):
+    if(context.user_data.get("state","wait")=="wait"):
+        sendmessage(context,"请先开始游戏")
+        return
     board.addai()
 
 
@@ -456,11 +477,11 @@ def confirmmessage(context, messages):
 
 
 def setname(update, context):
-    id = context.user_data.get("id")
+    context.user_data["id"]=update.effective_chat.id
     value = update.message.text.partition(' ')[2]
     context.user_data["name"] = value
     update.message.reply_text("昵称修改为："+value)
-    if(value=="恩雅"):context.bot.send_message(id, "悄悄看一眼手牌没问题的...")
+    if(value=="恩雅"):sendmessage(context, "悄悄看一眼手牌没问题的...")
 
 
 def getname(update, context):
@@ -478,15 +499,18 @@ def button(update, context):
             query.edit_message_text(text="已取消")
         time.sleep(2)
         query.delete_message()
+        return
     if context.user_data["option"] == -1:
         context.user_data["option"] = query.data
         query.edit_message_text(
             text="你选择: {}".format(tomahjong(int(query.data)))+"   剩余张数："+str(board.wall.left()))
         time.sleep(2)
         query.delete_message()
+        return
+
 
 def restartboard(update,context):
-    board.end()
+    board.end("restart")
     board=Board()
 
 dispatcher.add_handler(CommandHandler('setname', setname, run_async=True))
