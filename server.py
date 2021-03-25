@@ -411,7 +411,7 @@ class Board:
 board = Board()
 
 #=========================================================bot部分
-updater = Updater(token='1723327297:AAElQWkebnT9h3lun9FKrfQUZQrUSj5SxAU',use_context=True, request_kwargs={'proxy_url': 'http://127.0.0.1:7890/'})
+updater = Updater(token='',use_context=True, request_kwargs={'proxy_url': 'http://127.0.0.1:7890/'})
 dispatcher = updater.dispatcher
 
 def start(update, context):
