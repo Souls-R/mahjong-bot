@@ -93,7 +93,7 @@ class Wall:
     Tiles = []
 
     def __init__(self):
-        self.Tiles = alltileid
+        self.Tiles = list(alltileid)
 
     def shuffle(self):
         for i in range(len(self.Tiles)):
@@ -121,6 +121,7 @@ class Player:
     handTile = []
     showTile = []
     riverTile = []
+    change=[]
     message={"boardm":0,"changem":0}
 
     def __init__(self, context, name, id, point):
@@ -131,6 +132,7 @@ class Player:
         self.handTile = []
         self.showTile = []
         self.riverTile = []
+        self.change=["------","------","------","------"]
         self.message={"boardm":0,"changem":0}
 
     def confirm(self, messages,timeout=20):
@@ -155,7 +157,7 @@ class Player:
         self.handTile.append(id)
         self.organize()
 
-    def discard(self,defaulttile=0,timeout=20):
+    def discard(self,defaulttile=0,timeout=1):
         if(defaulttile==0):defaulttile=self.handTile[0]
         sendoption(self.context,"请弃牌：", self.handTile,defaulttile=defaulttile,timeout=timeout)
         while(self.context.user_data["option"] == -1):
@@ -233,14 +235,14 @@ class Player:
 
 class Ai(Player):
     def confirm(self, messages):
-        time.sleep(random.random()*5)
+        time.sleep(random.random()*0)
         if(random.random() > 0.5):
             return True
         else:
             return False
 
     def discard(self,defaulttile=0,timeout=20):
-        time.sleep(random.random()*5)
+        time.sleep(random.random()*0)
         rtile = int(len(self.handTile)*random.random())
         id = self.handTile[rtile]
         self.riverTile.append(id)
@@ -301,13 +303,19 @@ class Board:
             if(i.context != 0):
                 sendmessage(i.context, str(messages))
     def changebroadcast(self, player,messages,tile,extra=""):
-        for i in self.players:  
+        self.change.append(str(player.name).ljust(8,chr(12288))+str(messages)+tomahjong(tile)+"  "+extra)
+        for i in self.players:
             if(i.context != 0):
-                if(messages=="摸" and i.name!="娜瑞提尔" and i!=player):tile=0
-                self.change.pop(0)
-                self.change.append(str(player.name).ljust(8,chr(12288))+str(messages)+tomahjong(tile)+"  "+extra)
+                if(messages=="摸" and i!=player):
+                    exp=str(player.name).ljust(8,chr(12288))+str(messages)+"  "+extra
+                else:
+                    exp=str(player.name).ljust(8,chr(12288))+str(messages)+tomahjong(tile)+"  "+extra
+                
+                if(i.name=="娜瑞提尔"):
+                    exp=str(player.name).ljust(8,chr(12288))+str(messages)+tomahjong(tile)+"  "+extra
+                i.change.append(exp)
                 m=i.message["changem"]
-                i.message["changem"]=m.edit_text("\n".join(self.change))
+                i.message["changem"]=m.edit_text("\n".join(i.change[-4:]))
 
     @runasync
     def start(self):
@@ -367,7 +375,7 @@ class Board:
             if(winner != []):
                 for i in winner:
                     self.end(tomahjong(ongoingTile)+str(i.name)+"胡！",winner)
-                    self.broadcast(tomahjong(i.handTile))
+                    self.broadcast(tomahjong(i.handTile)+tomahjong(i.riverTile))
                     return
 
             thenext = index
@@ -407,8 +415,7 @@ class Board:
                     if(currentplayer.confirm("胡！")):
                         self.broadcast(tomahjong(ongoingTile))
                         self.end(currentplayer.name+"自摸",[currentplayer])
-                        self.broadcast(
-                            tomahjong(currentplayer.handTile))
+                        self.broadcast(tomahjong(i.handTile)+tomahjong(i.riverTile))
                         return
 
             # 无事发生
@@ -437,9 +444,12 @@ class Board:
             if(i.context != 0):
                 i.context.user_data["state"] = "wait"
         if(exit):return
+        winnerlist=[]
+        for i in winner:winnerlist.append(i.name)
         for i in self.players:
             if(i.context != 0):
                 i.context.user_data["game"] = i.context.user_data.get("game",[])
+                i.context.user_data["game"].append({"all":self.change,"self":i.change,"winner":winnerlist})
                 if(i in winner):i.context.user_data["win"] = i.context.user_data.get("win",0)+1
 
     def next(self, index):
@@ -499,10 +509,20 @@ boards = []
 
 
 my_persistence = PicklePersistence(filename='userfile')
+userdata=my_persistence.get_user_data ()
+#print(userdata)
+#清空玩家状态
+for i in userdata.keys():
+    userdata[i].pop("confirm","")
+    userdata[i].pop("option","")
+    userdata[i].pop("state","")
+    userdata[i].pop("board","")
+    my_persistence.update_user_data(i,userdata[i])
+# userdata=my_persistence.get_user_data ()
+# print(userdata)
 updater = Updater(token='1723327297:AAHMHOYjfXYNdlJNMDoLLU-Bx74MxivZOfk',
                    persistence=my_persistence,use_context=True, request_kwargs={'proxy_url': 'http://127.0.0.1:7890/'})
 dispatcher = updater.dispatcher
-
 
 def start(update, context):
     
@@ -511,6 +531,7 @@ def start(update, context):
                              text="Welcome to Mahjong!\n你的chatid是："+str(update.effective_chat.id))
     update.message.reply_text("将昵称修改为娜瑞提尔以观察其余人的手牌")
     update.message.reply_text("输入/exit以退出牌局")
+    update.message.reply_text("输入/exp [id] [mode:0/1]以查看对局记录")
     update.message.reply_text("在对局中回复id以获取剩余牌数\n01-09 : 万子\n11-19 : 条子\n21-29 : 筒子\n31-34 : 东南西北\n41-43 : 中发白")
 
 
@@ -699,6 +720,22 @@ def button(update, context):
         query.delete_message()
         return
 
+def exp(update, context):
+    para = str(update.message.text.partition(' ')[2])
+    game=context.user_data.get("game",[])
+    win=int(context.user_data.get("win",0))
+    if(para==""):
+        if(len(game)==0):rate="0%"
+        else:rate=str(int(win*100/len(game)))+"%"
+        sendmessage(context, context.user_data["name"]+"\n场次："+str(len(game))+"\n胜场："+str(win)+"\n胜率："+rate)
+    else:
+        id=int(para.split(" ")[0])
+        mode=int(para.split(" ")[1])
+        if(mode==0):
+            sendmessage(context, "\n".join(game[id]["all"]))
+        else:
+            sendmessage(context, "\n".join(game[id]["self"]))
+        sendmessage(context, "胜者:"+" ".join(game[id]["winner"]))
 
 def exitgame(update, context):
     boardid = int(context.user_data.get("board", -1))
@@ -722,6 +759,7 @@ dispatcher.add_handler(CommandHandler('setname', setname, run_async=True))
 dispatcher.add_handler(CommandHandler('getname', getname, run_async=True))
 dispatcher.add_handler(CommandHandler('addai', addai, run_async=True))
 dispatcher.add_handler(CommandHandler('play', play, run_async=True))
+dispatcher.add_handler(CommandHandler('exp', exp, run_async=True))
 dispatcher.add_handler(CommandHandler('start', start, run_async=True))
 dispatcher.add_handler(CommandHandler('exit', exitgame, run_async=True))
 dispatcher.add_handler(CallbackQueryHandler(button, run_async=True))
