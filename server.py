@@ -1,5 +1,5 @@
 from telegram import KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup,Message
-from telegram.ext import CommandHandler, MessageHandler, Filters, CallbackQueryHandler, run_async
+from telegram.ext import CommandHandler, MessageHandler, Filters, CallbackQueryHandler, run_async, PicklePersistence
 import time
 import threading
 from telegram.ext import Updater
@@ -30,7 +30,7 @@ alltile = [character, bamboo, dot, wind, dragon]
 def tomahjong(id):
     # 将麻将id或id列表转换为emoji
     if(isinstance(id, int)):
-        if(id==0):
+        if(not id in alltileid):
             return  ""
         return alltile[int(id/10)][id % 10]
     else:
@@ -121,7 +121,7 @@ class Player:
     handTile = []
     showTile = []
     riverTile = []
-    message={"boardm":0,"changem":0,"optionm":0}
+    message={"boardm":0,"changem":0}
 
     def __init__(self, context, name, id, point):
         self.context = context
@@ -366,7 +366,7 @@ class Board:
 
             if(winner != []):
                 for i in winner:
-                    self.end(tomahjong(ongoingTile)+str(i.name)+"胡了！")
+                    self.end(tomahjong(ongoingTile)+str(i.name)+"胡！",winner)
                     self.broadcast(tomahjong(i.handTile))
                     return
 
@@ -406,7 +406,7 @@ class Board:
                 if(ongoingTile == i):
                     if(currentplayer.confirm("胡！")):
                         self.broadcast(tomahjong(ongoingTile))
-                        self.end(currentplayer.name+"自摸")
+                        self.end(currentplayer.name+"自摸",[currentplayer])
                         self.broadcast(
                             tomahjong(currentplayer.handTile))
                         return
@@ -427,16 +427,20 @@ class Board:
                 if(winner == []):
                     self.end("流局：无人胜出")
                 else:
-                    self.end("流局："+" ".join(winner)+"听牌胜出")
+                    self.end("流局："+" ".join(winner)+"听牌胜出",winner)
                 return
 
-    def end(self, str):
+    def end(self, str,winner=[],exit=False):
         self.broadcast("游戏结束："+str)
         self.state = "wait"
         for i in self.players:
             if(i.context != 0):
                 i.context.user_data["state"] = "wait"
-        return
+        if(exit):return
+        for i in self.players:
+            if(i.context != 0):
+                i.context.user_data["game"] = i.context.user_data.get("game",[])
+                if(i in winner):i.context.user_data["win"] = i.context.user_data.get("win",0)+1
 
     def next(self, index):
         if(isinstance(index, int)):
@@ -494,13 +498,14 @@ boards = []
 
 
 
-
+my_persistence = PicklePersistence(filename='userfile')
 updater = Updater(token='1723327297:AAHMHOYjfXYNdlJNMDoLLU-Bx74MxivZOfk',
-                  use_context=True, request_kwargs={'proxy_url': 'http://127.0.0.1:7890/'})
+                   persistence=my_persistence,use_context=True, request_kwargs={'proxy_url': 'http://127.0.0.1:7890/'})
 dispatcher = updater.dispatcher
 
 
 def start(update, context):
+    
     context.user_data["id"] = update.effective_chat.id
     context.bot.send_message(chat_id=update.effective_chat.id,
                              text="Welcome to Mahjong!\n你的chatid是："+str(update.effective_chat.id))
@@ -555,6 +560,36 @@ def addai(update, context):
     time.sleep(3)
     update.message.delete()
 
+
+def sendmessage(context, messages):
+    id = context.user_data.get("id")
+    mobj=context.bot.send_message(id, messages)
+    return mobj
+
+@runasync
+def confirmmessage(context, messages,timeout=""):
+    context.user_data["confirm"] = -1
+    id = context.user_data.get("id")
+    keyboard = [[InlineKeyboardButton("是", callback_data='True'),
+                 InlineKeyboardButton("否", callback_data='False')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    m=context.bot.send_message(id, text=str(timeout)+messages, reply_markup=reply_markup)
+    if(timeout!=0):
+        while(timeout>0):
+            t=time.time()
+            timeout=timeout-1
+            m.edit_text(text=str(timeout)+messages, reply_markup=reply_markup)
+            if((time.time()-t)<1):time.sleep(1-(time.time()-t))
+            #print(str(time.time())+":confirmmessage")
+            if(context.user_data["confirm"]==-2):
+                break
+            if(context.user_data["confirm"]==0):
+                return
+        m.edit_text("超时，自动取消")
+        time.sleep(2)
+        m.delete()
+
 @runasync
 def sendoption(context, messages, options,defaulttile,timeout=""):
     context.user_data["option"] = -1
@@ -592,36 +627,6 @@ def sendoption(context, messages, options,defaulttile,timeout=""):
         m.edit_text("超时，已自动选择："+tomahjong(defaulttile))
         time.sleep(2)
         m.delete()
-
-def sendmessage(context, messages):
-    id = context.user_data.get("id")
-    mobj=context.bot.send_message(id, messages)
-    return mobj
-
-@runasync
-def confirmmessage(context, messages,timeout=""):
-    context.user_data["confirm"] = -1
-    id = context.user_data.get("id")
-    keyboard = [[InlineKeyboardButton("是", callback_data='True'),
-                 InlineKeyboardButton("否", callback_data='False')]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    m=context.bot.send_message(id, text=str(timeout)+messages, reply_markup=reply_markup)
-    if(timeout!=0):
-        while(timeout>0):
-            t=time.time()
-            timeout=timeout-1
-            m.edit_text(text=str(timeout)+messages, reply_markup=reply_markup)
-            if((time.time()-t)<1):time.sleep(1-(time.time()-t))
-            #print(str(time.time())+":confirmmessage")
-            if(context.user_data["confirm"]==-2):
-                break
-            if(context.user_data["confirm"]==0):
-                return
-        m.edit_text("超时，自动取消")
-        time.sleep(2)
-        m.delete()
-
 
 
 def setname(update, context):
@@ -708,7 +713,7 @@ def exitgame(update, context):
                 context.user_data["state"]="wait"
                 sendmessage(context,"已退出")
                 return
-    board.end("玩家退出 "+str(context.user_data["name"]))
+    board.end("玩家退出 "+str(context.user_data["name"]),exit=True)
     boards.remove(board)
 
 
